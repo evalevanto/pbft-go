@@ -1,0 +1,11 @@
+{
+    "network": {
+        "k": "30",
+        "node_count": "4",
+        "timeouts": {
+            "request": "2s",
+            "viewchange": "2s",
+            "resendviewchange": "2s"
+        }
+    }
+}

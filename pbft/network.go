@@ -1,29 +1,76 @@
 package pbft
 
-import "net"
+import (
+	"log"
+	"net"
+	"os"
 
-// All BFT phases are implemented here: pre-prepare, prepare, commit.
-// Communication: TCP.
+	"github.com/spf13/viper"
+)
 
-// Replica : defines attrs for a replicated nodes in the network.
-type Replica struct {
-	listener *net.TCPListener
-	ID       int64
-	addr     string
-	// Every node has a "list" of all other node in the network. map[ID]addr.
-	replicas       map[int64]string
-	currSequence   int64
-	view           int64
-	isInActiveView bool
-	checkpoints    []*Checkpoint
+var config *viper.Viper
+var logger *log.Logger
+
+func init() {
+	logger = log.New(os.Stdout, "Network Logs", log.Ltime)
+	config.SetConfigName("config")
+	config.SetConfigType("json")
+	config.AddConfigPath(".")
 }
 
-// Server :
-type Server struct {
-	Node *Replica
-	Port int
+type pbftNode struct {
+	net.Listener
+	nodeID    uint64 // backup identifier, i
+	nodeCount uint64 // Nodes in the network, |R|
+
+	sequenceNumber uint64 // Last stable request executed, n
+	activeView     bool
+	currentView    uint64 // View the node is in, v
+
+	h           uint64            // sequence number of the last stable checkpoint. Lower watermark, h. Used in pre-prep and prep.
+	H           uint64            // Water marks limit what messages will be accepted. High water mark, H. H = h + k.
+	k           uint64            // Static number that sets the high mark advance steps.
+	checkpoints map[uint64]string // A map of sequenceNo of checkpoints and digest.
+
+	currExecReq uint64 // Current request being executed.
+	requestChan chan *Request
 }
 
-func electPrimary(currentView int) {
-	// The ID of the new primary node is determined by : v mod N (current view number, v and total number of servers, N).
+// Constructor
+func newPbftNode(replID uint64) *pbftNode {
+	node := &pbftNode{}
+
+	node.nodeID = replID
+	node.nodeCount = config.GetUint64("network.node_count")
+	node.k = config.GetUint64("network.k")
+	node.checkpoints = make(map[uint64]string)
+
+	initialCheckpoint := "THE GENESIS XXXX"
+	node.checkpoints[0] = initialCheckpoint
+
+	logger.Printf("New node %d created", node.nodeID)
+
+	return node
+}
+
+// ------ HELPER FUNCTIONS ------
+
+// whoPrimary function determines the primary node in a view, v.
+// The primary of view v is the replica p such that p = mod |R|.
+func (node *pbftNode) whoPrimary(view uint64) uint64 {
+	return view % node.nodeCount
+}
+
+// isSeqInSpace checks that the sequence number, n in the pre-prepare or prepare
+// message is between the water marks; before being accepted.
+func (node *pbftNode) isSeqInSpace(sequenceNumber uint64) bool {
+	if sequenceNumber < node.h || sequenceNumber > node.H {
+		return false
+	}
+	return true
+}
+
+// ------ REPLICA COUNT FUNCTIONS ------
+func (node *pbftNode) countForPrePrep() {
+
 }
