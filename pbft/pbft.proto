@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package pbft;
+
+// Envelope for possible communicated messages.
+message message {
+    oneof payload {
+        pre_prepare pre_prepare = 1;
+        prepare prepare = 2;
+        commit commit = 3;
+        checkpoint checkpoint = 4;
+        view_change view_change = 5;
+        new_view new_view = 6;
+    }
+}
+
+
+// --- Request from client --- 
+message request {
+    google.protobuf.Timestamp timestamp = 1;  // For clock synchronisation.
+    string payload = 2;  // Actual request from client.
+    uint64 replica_id = 3;
+}
+
+
+// <PRE-PREPARE, v, n, d>
+// pre-prepare messages are used as proof that request was assigned sequence_number in view in view changes.
+// For ordering requests.
+message pre_prepare{
+    uint64 view = 1;
+    uint64 sequence_number = 2;
+    string digest = 4;
+    uint64 replica_id = 3;
+}
+
+// <PREPARE, v, n, d, i>
+// For ordering requests.
+message prepare {
+    uint64 view = 1;
+    uint64 sequence_number = 2;
+    string digest = 4;
+    uint64 replica_id = 3;
+}
+
+// <COMMIT, v, n, D(m), i>
+message commit{
+    uint64 view = 1;
+    uint64 sequence_number = 2;
+    string digest = 4;
+    uint64 replica_id = 3;
+}
+
+
+// <CHECKPOINT, n, d, i>
+// Generation periodically, when a request with a sequence number divisible by some constant is executed.
+message checkpoint {
+    uint64 sequence_number = 1; // last request whose execution is reflected on the state.
+    string id = 3; // Checkpoint ID.
+    uint64 replica_id = 2; 
+}
+
+
+//  <VIEW-CHANGE, v + 1, n, C, P, i>
+// View changes are triggered by timeouts that prevent backups from waiting indefinitely for requests to execute.
+message view_change{
+    uint64 view = 1;
+    uint64 sequence_number = 2;
+    message checkpointLoad {
+        uint64 sequence_number = 1; // Current stable request.
+        string id = 3; // Checkpoint ID.
+    }
+    repeated checkpointLoad checkset = 4; 
+    message prepLoad{
+        uint64 view = 1;
+        uint64 sequence_number = 2;
+        string digest = 4;
+    }
+    repeated prepLoad preprepset = 5;
+    repeated prepLoad prepset = 6;
+    uint64 replica_id = 3;
+}
+
+// <NEW-VIEW, v + 1, V, O>
+//  Ready all replicas! To view v + 1
+message new_view{
+    uint64 view = 1;
+    repeated view_change viewchset = 2;
+    // <sequence_number between min_s and max_s in viewchset, request digest of the pre-prep message> 
+    map<uint64,string> prereqset = 3;
+    uint64 replica_id = 4;
+}
+
+
+// Result sent back to client after execution of request.
+message reply{
+    google.protobuf.Timestamp timestamp = 1;
+    string payload = 2;
+    uint64 replica_id = 3;
+}
